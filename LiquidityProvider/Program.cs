@@ -13,6 +13,7 @@ using Newtonsoft.Json;
 using Nethereum.Util;
 using Microsoft.VisualBasic;
 using LiquidityProvider.Properties;
+using LiquidityProvider;
 
 internal class Program
 {
@@ -28,14 +29,29 @@ internal class Program
             cancellationToken: cts.Token
         );
 
+        string configurationFilePath = Path.Combine(AppContext.BaseDirectory, "configuration.json");
+        var configuration = Deserialize<Configuration>(configurationFilePath);
+        if (configuration is null)
+        {
+            Console.WriteLine("Can't load configuration.json");
+            Console.ReadLine();
+            return;
+        }
+
         string pairsFilePath = Path.Combine(AppContext.BaseDirectory, "pairs.json");
-
-        var liquidityPairs = DeserializePairs(pairsFilePath);
-
-        var account = new Account(Resources.AccountKey);
-        var web3 = new Web3(account, "https://arbitrum-mainnet.infura.io/v3/7be99096d466482789b45c682edf456d");
+        var liquidityPairs = Deserialize<List<LiquidityPair>>(pairsFilePath);
+        if(liquidityPairs is null)
+        {
+            Console.WriteLine("Can't load pairs.json");
+            Console.ReadLine();
+            return;
+        }
 
         #region Initialize
+        //{
+        //    liquidityPairs = new List<LiquidityPair>();
+        //    liquidityPairs.Add(new LiquidityPair("0x6816b2A43374B5ad8d0FfBdfaa416144ff5aCa3A", EtherscanChain.Arbitrum, (0, UnitConversion.Convert.ToWei(1.146230284517827734, UnitConversion.EthUnit.Ether)), "0x7a5b4e301fc2B148ceFe57257A236EB845082797"));
+        //}
         //var liquidityPairs = new List<ILiquidityPair>()
         //{
         //    new LiquidityPair("WETH-ETH", EtherscanChain.Arbitrum, "0x2088eB5E23F24458e241430eF155d4EC05BBc9e8", "0x7a5b4e301fc2B148ceFe57257A236EB845082797"),
@@ -45,6 +61,9 @@ internal class Program
         //};
         #endregion
 
+        var account = new Account(configuration.AccountKey);
+        var web3 = new Web3(account, "https://arbitrum-mainnet.infura.io/v3/7be99096d466482789b45c682edf456d");
+
         foreach (var item in liquidityPairs)
             await item.Initialize(web3, account);
 
@@ -52,10 +71,7 @@ internal class Program
 
         var monitoringTask = MonitoringLiquidityAsync(liquidityPairs);
 
-        Console.WriteLine($"Press any button to save pairs!");
-        Console.ReadLine();
-
-        SerializePairs(liquidityPairs, pairsFilePath);
+        Serialize(configuration, configurationFilePath);
 
         Console.WriteLine($"Press any button to exit!");
         Console.ReadLine();
@@ -103,7 +119,7 @@ internal class Program
         }
         #endregion
 
-        async Task MonitoringLiquidityAsync(List<ILiquidityPair> liquidityPairs)
+        async Task MonitoringLiquidityAsync(List<LiquidityPair> liquidityPairs)
         {
             Console.WriteLine($"Start monitoring");
 
@@ -116,11 +132,15 @@ internal class Program
                         var result = await liquidityPair.CheckChanged();
                         if(result)
                         {
-                            var information = await liquidityPair.GetInforamtion();
-                            Console.WriteLine(information);
-                            await liquidityPair.CorrectDiapason();
+                            if(await liquidityPair.CorrectDiapason())
+                            {
+                                var information = await liquidityPair.GetInforamtion();
+                                Console.WriteLine(information);
 
-                            await NotifyTelegramAsync(information);
+                                await NotifyTelegramAsync(information);
+
+                                Serialize(liquidityPairs, pairsFilePath);
+                            }
                         }
 
                         await Task.Delay(100);
@@ -138,32 +158,31 @@ internal class Program
         }
 
         #region Serialization
-        void SerializePairs(List<ILiquidityPair> liquidityPairs, string pairsFilePath)
+        void Serialize<T>(T liquidityPairs, string filePath)
         {
             var data = JsonConvert.SerializeObject(liquidityPairs, Newtonsoft.Json.Formatting.Indented, new JsonSerializerSettings
             {
                 TypeNameHandling = TypeNameHandling.Auto
             });
-            System.IO.File.WriteAllText(pairsFilePath, data);
-            Console.WriteLine("Pairs saved!");
+            System.IO.File.WriteAllText(filePath, data);
         }
 
-        List<ILiquidityPair> DeserializePairs(string pairsFilePath)
+        T? Deserialize<T>(string filePath)
         {
-            if (System.IO.File.Exists(pairsFilePath))
+            if (System.IO.File.Exists(filePath))
             {
-                string json = System.IO.File.ReadAllText(pairsFilePath);
-                var topicDatas = JsonConvert.DeserializeObject<List<LiquidityPair>>(json, new JsonSerializerSettings
+                string json = System.IO.File.ReadAllText(filePath);
+                var topicDatas = JsonConvert.DeserializeObject<T>(json, new JsonSerializerSettings
                 {
                     TypeNameHandling = TypeNameHandling.Auto
                 });
                 if (topicDatas is null)
-                    return new List<ILiquidityPair>();
+                    return default(T);
 
-                return topicDatas.OfType<ILiquidityPair>().ToList();
+                return topicDatas;
             }
 
-            return new List<ILiquidityPair>();
+            return default(T);
         }
         #endregion
     }

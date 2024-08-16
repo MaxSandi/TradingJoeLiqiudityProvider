@@ -137,20 +137,20 @@ namespace LiquidityProvider
 
     internal static class LiquidityService
     {
-        public static async Task<bool> AddLiquidity(Web3 web3, Contract contract, string apiKey, EtherscanChain chain, string accountAddress, BigInteger amountX, BigInteger amountY, BigInteger activeId)
+        public static async Task<bool> AddLiquidity(Web3 web3, Contract contract, string apiKey, EtherscanChain chain, string accountAddress, string tokenX, string tokenY, BigInteger amountX, BigInteger amountY, BigInteger activeId)
         {
             var binStep = await contract.GetFunction("getBinStep").CallAsync<ushort>();
 
             var deadline = new DateTimeOffset(DateTime.Now.AddDays(1)).ToUnixTimeSeconds();
             var liquidityParameters = new LiquidityParameters()
             {
-                tokenX = "0x35751007a407ca6FEFfE80b3cB397736D2cf4dbe",
-                tokenY = "0x82aF49447D8a07e3bd95BD0d56f35241523fBab1",
+                tokenX = tokenX,
+                tokenY = tokenY,
                 binStep = binStep,
                 amountX = amountX,
                 amountY = amountY,
-                amountXMin = amountX == 0 ? 0 : amountX - (amountX / 1000),
-                amountYMin = amountY == 0 ? 0 : amountY - (amountY / 1000),
+                amountXMin = amountX == 0 ? 0 : amountX - (amountX / 100),
+                amountYMin = amountY == 0 ? 0 : amountY - (amountY / 100),
                 activeIdDesired = activeId,
                 idSlippage = 0,
                 deltaIds = new List<BigInteger>() { 0 },
@@ -184,8 +184,8 @@ namespace LiquidityProvider
             {
                 token = tokenX,
                 binStep = binStep,
-                amountTokenMin = totalBalanceX == 0 ? 0 : totalBalanceX - (totalBalanceX / 1000),
-                amountNATIVEMin = totalBalanceY == 0 ? 0 : totalBalanceY - (totalBalanceY / 1000),
+                amountTokenMin = totalBalanceX == 0 ? 0 : totalBalanceX - (totalBalanceX / 100),
+                amountNATIVEMin = totalBalanceY == 0 ? 0 : totalBalanceY - (totalBalanceY / 100),
                 ids = new List<BigInteger>() { currentActiveId },
                 amounts = new List<BigInteger>() { LBTokenAmount },
                 to = accountAddress,
@@ -200,7 +200,7 @@ namespace LiquidityProvider
             return result.Succeeded();
         }
 
-        public static async Task<(bool, BigInteger)> CorrectDiapason(Web3 web3, Contract contract, string apiKey, EtherscanChain chain, BigInteger currentActiveId, string accountAddress, string tokenX)
+        public static async Task<(bool, BigInteger)> CorrectDiapason(Web3 web3, Contract contract, string apiKey, EtherscanChain chain, BigInteger currentActiveId, string accountAddress, (string adress, string symbol) tokenX, (string adress, string symbol) tokenY)
         {
             // get mint id from current active id
             var LBTokenAmount = await contract.GetFunction("balanceOf").CallAsync<BigInteger>(new object[] { accountAddress, currentActiveId });
@@ -210,7 +210,14 @@ namespace LiquidityProvider
             var totalBalanceX = LBTokenAmount * binReserve.X / totalSupply;
             var totalBalanceY = LBTokenAmount * binReserve.Y / totalSupply;
 
-            var result = await RemoveLiquidity(web3, contract, apiKey, chain, currentActiveId, accountAddress, tokenX, LBTokenAmount, totalBalanceX, totalBalanceY);
+            var gasPrice = await web3.Eth.GasPrice.SendRequestAsync();
+            if(gasPrice.Value > 15000000)
+            {
+                Console.WriteLine($"Error Gas too high {gasPrice.Value}");
+                return (false, currentActiveId);
+            }
+
+            var result = await RemoveLiquidity(web3, contract, apiKey, chain, currentActiveId, accountAddress, tokenX.adress, LBTokenAmount, totalBalanceX, totalBalanceY);
             if (!result)
             {
                 Console.WriteLine("Error RemoveLiquidity");
@@ -219,17 +226,18 @@ namespace LiquidityProvider
 
             var activeId = await contract.GetFunction("getActiveId").CallAsync<BigInteger>();
 
-            result = await AddLiquidity(web3, contract, apiKey, chain, accountAddress, totalBalanceX, totalBalanceY, activeId);
+            result = await AddLiquidity(web3, contract, apiKey, chain, accountAddress, tokenX.adress, tokenY.adress, totalBalanceX, totalBalanceY, activeId);
             if (!result)
             {
                 Console.WriteLine("Error AddLiquidity");
                 return (false, currentActiveId);
             }
 
+            var name = $"{tokenX.symbol}-{tokenY.symbol}";
             var balanceX = UnitConversion.Convert.FromWei(totalBalanceX, UnitConversion.EthUnit.Ether);
-            var balanceY = UnitConversion.Convert.FromWei(totalBalanceX, UnitConversion.EthUnit.Ether);
+            var balanceY = UnitConversion.Convert.FromWei(totalBalanceY, UnitConversion.EthUnit.Ether);
             var information = $"""
-                Correct diapason WEETH-ETH # BalanceX {balanceX} # BalanceY {balanceY} # Id {activeId}
+                Correct diapason {name} # BalanceX {balanceX} # BalanceY {balanceY} # Id {activeId}
                 """;
             Console.WriteLine(information);
 

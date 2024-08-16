@@ -22,19 +22,18 @@ namespace LiquidityProvider.LiquidityPairs
         private Web3? _web3;
         private Account? _account;
         private Contract? _contract;
-        private string _tokenX;
-        private string _tokenY;
+        private (string address, string symbol) _tokenX;
+        private (string address, string symbol) _tokenY;
 
-        public string Name { get; set; }
+        public string Name { get; set; } = string.Empty;
         public EtherscanChain Chain { get; set; }
         public string ContractAdress { get; set; }
         public string ContractProxyAdress { get; set; }
         public BigInteger CurrentActiveId { get; set; }
         public string LastDepositedToken { get; set; }
 
-        public LiquidityPair(string name, EtherscanChain chain, (int token, BigInteger value) initializeBalance, string contractAdress, string contractProxyAdress = "")
+        public LiquidityPair(string contractAdress, EtherscanChain chain, (int token, BigInteger value) initializeBalance, string contractProxyAdress = "")
         {
-            Name = name;
             Chain = chain;
             ContractAdress = contractAdress;
             _initializeBalance = initializeBalance;
@@ -42,8 +41,8 @@ namespace LiquidityProvider.LiquidityPairs
             CurrentActiveId = 0;
             LastDepositedToken = string.Empty;
 
-            _tokenX = string.Empty;
-            _tokenY = string.Empty;
+            _tokenX = (string.Empty, string.Empty);
+            _tokenY = (string.Empty, string.Empty);
         }
 
         public virtual async Task Initialize(Web3 web3, Account account)
@@ -55,8 +54,14 @@ namespace LiquidityProvider.LiquidityPairs
             var abiContract = await etherscanService.Contracts.GetAbiAsync(ContractProxyAdress);
             _contract = _web3.Eth.GetContract(abiContract.Result, ContractAdress);
 
-            _tokenX = await _contract.GetFunction("getTokenX").CallAsync<string>();
-            _tokenY = await _contract.GetFunction("getTokenY").CallAsync<string>();
+            var tokenAddressX = await _contract.GetFunction("getTokenX").CallAsync<string>();
+            var tokenAddressY = await _contract.GetFunction("getTokenY").CallAsync<string>();
+            var tokenSymbolX = await GetTokenSymbol(tokenAddressX);
+            var tokenSymbolY = await GetTokenSymbol(tokenAddressY);
+
+            _tokenX = (tokenAddressX, tokenSymbolX);
+            _tokenY = (tokenAddressY, tokenSymbolY);
+            Name = $"{tokenSymbolX}-{tokenSymbolY}";
 
             if (CurrentActiveId == 0)
                 await InitializeLiquidity();
@@ -86,10 +91,10 @@ namespace LiquidityProvider.LiquidityPairs
 
         public async Task<bool> CorrectDiapason()
         {
-            if (_contract is null || _web3 is null)
+            if (_contract is null || _web3 is null || _account is null)
                 return false;
 
-            var result = await LiquidityService.CorrectDiapason(_web3, _contract, ApiKey, Chain, CurrentActiveId, _account.Address, _tokenX);
+            var result = await LiquidityService.CorrectDiapason(_web3, _contract, ApiKey, Chain, CurrentActiveId, _account.Address, _tokenX, _tokenY);
             if(result.Item1)
                 CurrentActiveId = result.Item2;
 
@@ -128,7 +133,7 @@ namespace LiquidityProvider.LiquidityPairs
 
             var amountX = _initializeBalance.token == 0 ? _initializeBalance.value : 0;
             var amountY = _initializeBalance.token != 0 ? _initializeBalance.value : 0;
-            var result = await LiquidityService.AddLiquidity(_web3, _contract, ApiKey, Chain, _account.Address, amountX, amountY, activeId);
+            var result = await LiquidityService.AddLiquidity(_web3, _contract, ApiKey, Chain, _account.Address, _tokenX.address, _tokenY.address, amountX, amountY, activeId);
             if(result)
             {
                 CurrentActiveId = activeId;
@@ -136,6 +141,12 @@ namespace LiquidityProvider.LiquidityPairs
             }
             else
                 Console.WriteLine("Error initilaize liquidity!");
+        }
+
+        private async Task<string> GetTokenSymbol(string tokenAdress)
+        {
+            var contractService = _web3.Eth.ERC20.GetContractService(tokenAdress);
+            return await contractService.SymbolQueryAsync();
         }
     }
 }
