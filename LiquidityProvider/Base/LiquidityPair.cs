@@ -1,4 +1,5 @@
 ﻿using Nethereum.Contracts;
+using Nethereum.Contracts.QueryHandlers.MultiCall;
 using Nethereum.DataServices.Etherscan;
 using Nethereum.Hex.HexTypes;
 using Nethereum.RPC.Eth.DTOs;
@@ -25,12 +26,13 @@ namespace LiquidityProvider.LiquidityPairs
         private (string address, string symbol) _tokenX;
         private (string address, string symbol) _tokenY;
 
-        public string Name { get; set; } = string.Empty;
+        public string Name => $"{_tokenX.symbol}-{_tokenY.symbol}";
+
         public EtherscanChain Chain { get; set; }
         public string ContractAdress { get; set; }
         public string ContractProxyAdress { get; set; }
         public BigInteger CurrentActiveId { get; set; }
-        public string LastDepositedToken { get; set; }
+        public bool OnlyMonitoring { get; set; } = false;
 
         public LiquidityPair(string contractAdress, EtherscanChain chain, (int token, BigInteger value) initializeBalance, string contractProxyAdress = "")
         {
@@ -39,7 +41,6 @@ namespace LiquidityProvider.LiquidityPairs
             _initializeBalance = initializeBalance;
             ContractProxyAdress = string.IsNullOrEmpty(contractProxyAdress) ? contractAdress : contractProxyAdress;
             CurrentActiveId = 0;
-            LastDepositedToken = string.Empty;
 
             _tokenX = (string.Empty, string.Empty);
             _tokenY = (string.Empty, string.Empty);
@@ -61,7 +62,6 @@ namespace LiquidityProvider.LiquidityPairs
 
             _tokenX = (tokenAddressX, tokenSymbolX);
             _tokenY = (tokenAddressY, tokenSymbolY);
-            Name = $"{tokenSymbolX}-{tokenSymbolY}";
 
             if (CurrentActiveId == 0)
                 await InitializeLiquidity();
@@ -72,33 +72,37 @@ namespace LiquidityProvider.LiquidityPairs
             if (_contract is null)
                 return false;
 
-            var activeId = await _contract.GetFunction("getActiveId").CallAsync<BigInteger>();
+            var activeId = await _contract.GetFunction("getActiveId").CallAsync<BigInteger>();          
             return CurrentActiveId != activeId;
         }
 
-        public virtual async Task<string> GetInforamtion()
+        public async Task<(bool success, string information)> CorrectDiapason()
         {
-            if (_contract is null || CurrentActiveId == 0)
-                return string.Empty;
+            if (_contract is null || _web3 is null || _account is null)
+                return (false, "Not initialize!");
 
-            var binStep = await _contract.GetFunction("getBinStep").CallAsync<BigInteger>();
-            var price = CalculatePrice(CurrentActiveId, binStep);
-            return $"""
+            if (OnlyMonitoring)
+            {
+                var binStep = await _contract.GetFunction("getBinStep").CallAsync<BigInteger>();
+                var activeId = await _contract.GetFunction("getActiveId").CallAsync<BigInteger>();
+                var price = CalculatePrice(CurrentActiveId, binStep);
+                var information = $"""
                 Token pair: {Name}
                 New active id - {CurrentActiveId} # {price:F8} # {DateTime.Now}
                 """;
-        }
+                Console.WriteLine(information);
 
-        public async Task<bool> CorrectDiapason()
-        {
-            if (_contract is null || _web3 is null || _account is null)
-                return false;
+                CurrentActiveId = activeId;
+                return (true, string.Empty);
+            }
+            else
+            {
+                var result = await LiquidityService.CorrectDiapason(_web3, _contract, ApiKey, Chain, CurrentActiveId, _account.Address, _tokenX, _tokenY);
+                if (result.success)
+                    CurrentActiveId = result.activeId;
 
-            var result = await LiquidityService.CorrectDiapason(_web3, _contract, ApiKey, Chain, CurrentActiveId, _account.Address, _tokenX, _tokenY);
-            if(result.Item1)
-                CurrentActiveId = result.Item2;
-
-            return result.Item1;
+                return (result.success, result.information);
+            }
         }
 
         private decimal CalculatePrice(BigInteger activeId, BigInteger binStep)
@@ -131,16 +135,23 @@ namespace LiquidityProvider.LiquidityPairs
 
             var activeId = await _contract.GetFunction("getActiveId").CallAsync<BigInteger>();
 
+            if (_initializeBalance.value == 0 || OnlyMonitoring)
+            {
+                CurrentActiveId = activeId;
+                Console.WriteLine($"Token pair: {Name} Success initilaize liquidity!");
+                return;
+            }
+
             var amountX = _initializeBalance.token == 0 ? _initializeBalance.value : 0;
             var amountY = _initializeBalance.token != 0 ? _initializeBalance.value : 0;
             var result = await LiquidityService.AddLiquidity(_web3, _contract, ApiKey, Chain, _account.Address, _tokenX.address, _tokenY.address, amountX, amountY, activeId);
             if(result)
             {
                 CurrentActiveId = activeId;
-                Console.WriteLine("Success initilaize liquidity!");
+                Console.WriteLine($"Token pair: {Name} Success initilaize liquidity!");
             }
             else
-                Console.WriteLine("Error initilaize liquidity!");
+                Console.WriteLine($"Token pair: {Name} Error initilaize liquidity!");
         }
 
         private async Task<string> GetTokenSymbol(string tokenAdress)

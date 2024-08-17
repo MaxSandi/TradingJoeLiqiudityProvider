@@ -200,7 +200,7 @@ namespace LiquidityProvider
             return result.Succeeded();
         }
 
-        public static async Task<(bool, BigInteger)> CorrectDiapason(Web3 web3, Contract contract, string apiKey, EtherscanChain chain, BigInteger currentActiveId, string accountAddress, (string adress, string symbol) tokenX, (string adress, string symbol) tokenY)
+        public static async Task<(bool success, BigInteger activeId, string information)> CorrectDiapason(Web3 web3, Contract contract, string apiKey, EtherscanChain chain, BigInteger currentActiveId, string accountAddress, (string adress, string symbol) tokenX, (string adress, string symbol) tokenY)
         {
             // get mint id from current active id
             var LBTokenAmount = await contract.GetFunction("balanceOf").CallAsync<BigInteger>(new object[] { accountAddress, currentActiveId });
@@ -214,14 +214,14 @@ namespace LiquidityProvider
             if(gasPrice.Value > 15000000)
             {
                 Console.WriteLine($"Error Gas too high {gasPrice.Value}");
-                return (false, currentActiveId);
+                return (false, currentActiveId, string.Empty);
             }
 
             var result = await RemoveLiquidity(web3, contract, apiKey, chain, currentActiveId, accountAddress, tokenX.adress, LBTokenAmount, totalBalanceX, totalBalanceY);
             if (!result)
             {
                 Console.WriteLine("Error RemoveLiquidity");
-                return (false, currentActiveId);
+                return (false, currentActiveId, string.Empty);
             }
 
             var activeId = await contract.GetFunction("getActiveId").CallAsync<BigInteger>();
@@ -230,7 +230,7 @@ namespace LiquidityProvider
             if (!result)
             {
                 Console.WriteLine("Error AddLiquidity");
-                return (false, currentActiveId);
+                return (false, currentActiveId, string.Empty);
             }
 
             var name = $"{tokenX.symbol}-{tokenY.symbol}";
@@ -239,9 +239,8 @@ namespace LiquidityProvider
             var information = $"""
                 Correct diapason {name} # BalanceX {balanceX} # BalanceY {balanceY} # Id {activeId}
                 """;
-            Console.WriteLine(information);
 
-            return (true, activeId);
+            return (true, activeId, information);
         }
 
         private static async Task<Nethereum.Contracts.Function<T>> GetLBProviderFunction<T>(Web3 web3, string apiKey, EtherscanChain chain)

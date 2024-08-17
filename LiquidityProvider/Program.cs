@@ -38,27 +38,23 @@ internal class Program
             return;
         }
 
+        #region Initialize
         string pairsFilePath = Path.Combine(AppContext.BaseDirectory, "pairs.json");
+        //var liquidityPairs = new List<LiquidityPair>()
+        //{
+        //    new LiquidityPair("0x6816b2A43374B5ad8d0FfBdfaa416144ff5aCa3A", EtherscanChain.Arbitrum, (0, 0), "0x7a5b4e301fc2B148ceFe57257A236EB845082797") { OnlyMonitoring = true },
+        //    new LiquidityPair("0x2088eB5E23F24458e241430eF155d4EC05BBc9e8", EtherscanChain.Arbitrum, (0, 0), "0x7a5b4e301fc2B148ceFe57257A236EB845082797") { OnlyMonitoring = true },
+        //    new LiquidityPair("0xE28b5df4C2da6145a3d9b8FF076231ABb534B103", EtherscanChain.Arbitrum, (0, 0), "0x7a5b4e301fc2B148ceFe57257A236EB845082797") { OnlyMonitoring = true },
+        //    new LiquidityPair("0xe27C3153EA4479F6BE5D3c909c8Dc4807c86FddA", EtherscanChain.Arbitrum, (0, 0), "0x7a5b4e301fc2B148ceFe57257A236EB845082797") { OnlyMonitoring = true },
+        //    new LiquidityPair("0xC09F4ad33a164e29DF3c94719ffD5F7B5B057781", EtherscanChain.Arbitrum, (0, 0), "0x7a5b4e301fc2B148ceFe57257A236EB845082797") { OnlyMonitoring = true },
+        //};
         var liquidityPairs = Deserialize<List<LiquidityPair>>(pairsFilePath);
-        if(liquidityPairs is null)
+        if (liquidityPairs is null)
         {
             Console.WriteLine("Can't load pairs.json");
             Console.ReadLine();
             return;
         }
-
-        #region Initialize
-        //{
-        //    liquidityPairs = new List<LiquidityPair>();
-        //    liquidityPairs.Add(new LiquidityPair("0x6816b2A43374B5ad8d0FfBdfaa416144ff5aCa3A", EtherscanChain.Arbitrum, (0, UnitConversion.Convert.ToWei(1.146230284517827734, UnitConversion.EthUnit.Ether)), "0x7a5b4e301fc2B148ceFe57257A236EB845082797"));
-        //}
-        //var liquidityPairs = new List<ILiquidityPair>()
-        //{
-        //    new LiquidityPair("WETH-ETH", EtherscanChain.Arbitrum, "0x2088eB5E23F24458e241430eF155d4EC05BBc9e8", "0x7a5b4e301fc2B148ceFe57257A236EB845082797"),
-        //    //new LiquidityPair(web3, "JOE-ETH", EtherscanChain.Arbitrum, "0xb147468ab3CD4bBb66c48628C00D6a49be0e9ec3", "0x7a5b4e301fc2B148ceFe57257A236EB845082797"),
-        //    new LiquidityPair("USDV-USDC", EtherscanChain.Arbitrum, "0xE28b5df4C2da6145a3d9b8FF076231ABb534B103", "0x7a5b4e301fc2B148ceFe57257A236EB845082797"),
-        //    new LiquidityPair("WAVAX-ETH", EtherscanChain.Arbitrum, "0x6816b2A43374B5ad8d0FfBdfaa416144ff5aCa3A", "0x7a5b4e301fc2B148ceFe57257A236EB845082797"),
-        //};
         #endregion
 
         var account = new Account(configuration.AccountKey);
@@ -68,6 +64,7 @@ internal class Program
             await item.Initialize(web3, account);
 
         Console.WriteLine($"Inititialized {liquidityPairs.Count} pairs!");
+        Serialize(liquidityPairs, pairsFilePath);
 
         var monitoringTask = MonitoringLiquidityAsync(liquidityPairs);
 
@@ -129,15 +126,17 @@ internal class Program
                 {
                     foreach (var liquidityPair in liquidityPairs)
                     {
-                        var result = await liquidityPair.CheckChanged();
-                        if(result)
+                        var isChanged = await liquidityPair.CheckChanged();
+                        if(isChanged)
                         {
-                            if(await liquidityPair.CorrectDiapason())
+                            var result = await liquidityPair.CorrectDiapason();
+                            if (result.success)
                             {
-                                var information = await liquidityPair.GetInforamtion();
-                                Console.WriteLine(information);
-
-                                await NotifyTelegramAsync(information);
+                                if(!string.IsNullOrEmpty(result.information))
+                                {
+                                    Console.WriteLine(result.information);
+                                    await NotifyTelegramAsync(result.information);
+                                }
 
                                 Serialize(liquidityPairs, pairsFilePath);
                             }
