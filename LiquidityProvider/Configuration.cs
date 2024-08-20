@@ -10,6 +10,8 @@ namespace LiquidityProvider
     [Serializable]
     public class Configuration
     {
+        public string RpcEndpoint { get; set; } = "";
+
         public string AccountKey { get; set; } = "";
         public string EtherscanAPIKey { get; set; } = "";
 

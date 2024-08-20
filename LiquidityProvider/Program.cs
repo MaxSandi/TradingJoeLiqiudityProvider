@@ -24,12 +24,12 @@ internal class Program
             return;
         }
 
-        if(string.IsNullOrEmpty(configuration.TelegramAPI))
+        var result = CheckConfiguration(configuration);
+        if(!result.Item1)
         {
-            Console.WriteLine("ERROR: TelegramAPI is empty");
+            Console.WriteLine(result.Item2);
             Console.ReadLine();
             return;
-
         }
 
         TelegramBotClient botClient = new TelegramBotClient(configuration.TelegramAPI);
@@ -60,7 +60,7 @@ internal class Program
         #endregion
 
         var account = new Account(configuration.AccountKey);
-        var web3 = new Web3(account, "https://arbitrum-mainnet.infura.io/v3/7be99096d466482789b45c682edf456d");
+        var web3 = new Web3(account, configuration.RpcEndpoint);
 
         foreach (var item in liquidityPairs)
             await item.Initialize(web3, account, configuration);
@@ -116,6 +116,18 @@ internal class Program
                 await botClient.SendTextMessageAsync(configuration.NotifyUserID, information);
         }
         #endregion
+
+        (bool, string) CheckConfiguration(Configuration configuration)
+        {
+            if (string.IsNullOrEmpty(configuration.TelegramAPI))
+                return (false, "ERROR: Configuration TelegramAPI is empty");
+            if (string.IsNullOrEmpty(configuration.AccountKey))
+                return (false, "ERROR: Configuration AccountKey is empty");
+            if (string.IsNullOrEmpty(configuration.RpcEndpoint))
+                return (false, "ERROR: Configuration RpcEndpoint is empty");
+
+            return (true, string.Empty);
+        }
 
         async Task MonitoringLiquidityAsync(List<LiquidityPair> liquidityPairs)
         {

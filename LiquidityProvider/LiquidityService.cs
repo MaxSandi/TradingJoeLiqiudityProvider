@@ -217,12 +217,16 @@ namespace LiquidityProvider
                 return (false, currentActiveId, string.Empty);
             }
 
+            await Task.Delay(1000);
+
             var result = await RemoveLiquidity(web3, contract, etherscanApiService, currentActiveId, accountAddress, tokenX.adress, LBTokenAmount, totalBalanceX, totalBalanceY);
             if (!result)
             {
                 Console.WriteLine("Error RemoveLiquidity");
                 return (false, currentActiveId, string.Empty);
             }
+
+            await Task.Delay(1000);
 
             var activeId = await contract.GetFunction("getActiveId").CallAsync<BigInteger>();
 
