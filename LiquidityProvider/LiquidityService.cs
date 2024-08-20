@@ -213,7 +213,7 @@ namespace LiquidityProvider
             var gasPrice = await web3.Eth.GasPrice.SendRequestAsync();
             if(gasPrice.Value > configuration.GasLimitWei)
             {
-                Console.WriteLine($"Error Gas too high {gasPrice.Value}");
+                Console.WriteLine($"Error Gas too high {gasPrice.Value} # {DateTime.Now}");
                 return (false, currentActiveId, string.Empty);
             }
 
