@@ -237,7 +237,7 @@ namespace LiquidityProvider
             var balanceX = UnitConversion.Convert.FromWei(totalBalanceX, UnitConversion.EthUnit.Ether);
             var balanceY = UnitConversion.Convert.FromWei(totalBalanceY, UnitConversion.EthUnit.Ether);
             var information = $"""
-                Correct diapason {name} # BalanceX {balanceX} # BalanceY {balanceY} # Id {activeId}
+                Correct diapason {name} # BalanceX {balanceX} # BalanceY {balanceY} # Id {activeId} # {DateTime.Now}
                 """;
 
             return (true, activeId, information);

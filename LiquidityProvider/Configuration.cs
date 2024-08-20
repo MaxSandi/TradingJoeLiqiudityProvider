@@ -10,5 +10,8 @@ namespace LiquidityProvider
     public class Configuration
     {
         public string AccountKey { get; set; } = "";
+
+        public string TelegramAPI { get; set; } = "";
+        public long NotifyUserID { get; set; } = 0;
     }
 }

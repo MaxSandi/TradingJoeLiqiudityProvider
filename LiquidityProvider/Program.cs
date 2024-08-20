@@ -1,18 +1,12 @@
 ﻿// See https://aka.ms/new-console-template for more information
 using Nethereum.Web3;
 using Nethereum.Web3.Accounts;
-using Nethereum.DataServices.Etherscan;
 using Telegram.Bot;
 using Telegram.Bot.Types;
 using Telegram.Bot.Exceptions;
 using Telegram.Bot.Types.Enums;
-using Microsoft.Extensions.Configuration;
-using Newtonsoft.Json.Linq;
 using LiquidityProvider.LiquidityPairs;
 using Newtonsoft.Json;
-using Nethereum.Util;
-using Microsoft.VisualBasic;
-using LiquidityProvider.Properties;
 using LiquidityProvider;
 
 internal class Program
@@ -21,22 +15,30 @@ internal class Program
     {
         Console.WriteLine("Hello, World!");
 
-        TelegramBotClient botClient = new TelegramBotClient(Resources.TELEGRAM_API);
+        string configurationFilePath = Path.Combine(AppContext.BaseDirectory, "configuration.json");
+        var configuration = Deserialize<Configuration>(configurationFilePath);
+        if (configuration is null)
+        {
+            Console.WriteLine("ERROR: Can't load configuration.json");
+            Console.ReadLine();
+            return;
+        }
+
+        if(string.IsNullOrEmpty(configuration.TelegramAPI))
+        {
+            Console.WriteLine("ERROR: TelegramAPI is empty");
+            Console.ReadLine();
+            return;
+
+        }
+
+        TelegramBotClient botClient = new TelegramBotClient(configuration.TelegramAPI);
         using CancellationTokenSource cts = new();
         botClient.StartReceiving(
             updateHandler: HandleUpdateAsync,
             pollingErrorHandler: HandlePollingErrorAsync,
             cancellationToken: cts.Token
         );
-
-        string configurationFilePath = Path.Combine(AppContext.BaseDirectory, "configuration.json");
-        var configuration = Deserialize<Configuration>(configurationFilePath);
-        if (configuration is null)
-        {
-            Console.WriteLine("Can't load configuration.json");
-            Console.ReadLine();
-            return;
-        }
 
         #region Initialize
         string pairsFilePath = Path.Combine(AppContext.BaseDirectory, "pairs.json");
@@ -110,9 +112,8 @@ internal class Program
 
         async Task NotifyTelegramAsync(string information)
         {
-            long notifyUserId = long.Parse(Resources.NotifyUserId);
-            if (notifyUserId != 0)
-                await botClient.SendTextMessageAsync(notifyUserId, information);
+            if (configuration.NotifyUserID != 0)
+                await botClient.SendTextMessageAsync(configuration.NotifyUserID, information);
         }
         #endregion
 
