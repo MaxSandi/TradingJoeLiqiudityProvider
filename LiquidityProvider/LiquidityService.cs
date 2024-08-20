@@ -137,7 +137,7 @@ namespace LiquidityProvider
 
     internal static class LiquidityService
     {
-        public static async Task<bool> AddLiquidity(Web3 web3, Contract contract, string apiKey, EtherscanChain chain, string accountAddress, string tokenX, string tokenY, BigInteger amountX, BigInteger amountY, BigInteger activeId)
+        public static async Task<bool> AddLiquidity(Web3 web3, Contract contract, EtherscanApiService etherscanApiService, string accountAddress, string tokenX, string tokenY, BigInteger amountX, BigInteger amountY, BigInteger activeId)
         {
             var binStep = await contract.GetFunction("getBinStep").CallAsync<ushort>();
 
@@ -168,14 +168,14 @@ namespace LiquidityProvider
                 FromAddress = accountAddress,
             };
 
-            var addLiquidityFunction = await GetLBProviderFunction<AddLiquidityFunction>(web3, apiKey, chain);
+            var addLiquidityFunction = await GetLBProviderFunction<AddLiquidityFunction>(web3, etherscanApiService);
 
             var cancellationToken = new CancellationTokenSource().Token;
             var result = await addLiquidityFunction.SendTransactionAndWaitForReceiptAsync(function, accountAddress, gasPrice, amountY == 0 ? new HexBigInteger(0) : new HexBigInteger(amountY), cancellationToken);
             return result.Succeeded();
         }
 
-        public static async Task<bool> RemoveLiquidity(Web3 web3, Contract contract, string apiKey, EtherscanChain chain, BigInteger currentActiveId, string accountAddress, string tokenX, BigInteger LBTokenAmount, BigInteger totalBalanceX, BigInteger totalBalanceY)
+        public static async Task<bool> RemoveLiquidity(Web3 web3, Contract contract, EtherscanApiService etherscanApiService, BigInteger currentActiveId, string accountAddress, string tokenX, BigInteger LBTokenAmount, BigInteger totalBalanceX, BigInteger totalBalanceY)
         {
             var binStep = await contract.GetFunction("getBinStep").CallAsync<ushort>();
 
@@ -192,7 +192,7 @@ namespace LiquidityProvider
                 deadline = deadline
             };
 
-            var removeLiquidityFunction = await GetLBProviderFunction<RemoveLiquidityFunction>(web3, apiKey, chain);
+            var removeLiquidityFunction = await GetLBProviderFunction<RemoveLiquidityFunction>(web3, etherscanApiService);
 
             var cancellationToken = new CancellationTokenSource().Token;
             var gasPrice = await web3.Eth.GasPrice.SendRequestAsync();
@@ -200,7 +200,7 @@ namespace LiquidityProvider
             return result.Succeeded();
         }
 
-        public static async Task<(bool success, BigInteger activeId, string information)> CorrectDiapason(Web3 web3, Contract contract, string apiKey, EtherscanChain chain, BigInteger currentActiveId, string accountAddress, (string adress, string symbol) tokenX, (string adress, string symbol) tokenY)
+        public static async Task<(bool success, BigInteger activeId, string information)> CorrectDiapason(Web3 web3, Contract contract, Configuration configuration, EtherscanApiService etherscanApiService, BigInteger currentActiveId, string accountAddress, (string adress, string symbol) tokenX, (string adress, string symbol) tokenY)
         {
             // get mint id from current active id
             var LBTokenAmount = await contract.GetFunction("balanceOf").CallAsync<BigInteger>(new object[] { accountAddress, currentActiveId });
@@ -211,13 +211,13 @@ namespace LiquidityProvider
             var totalBalanceY = LBTokenAmount * binReserve.Y / totalSupply;
 
             var gasPrice = await web3.Eth.GasPrice.SendRequestAsync();
-            if(gasPrice.Value > 15000000)
+            if(gasPrice.Value > configuration.GasLimitWei)
             {
                 Console.WriteLine($"Error Gas too high {gasPrice.Value}");
                 return (false, currentActiveId, string.Empty);
             }
 
-            var result = await RemoveLiquidity(web3, contract, apiKey, chain, currentActiveId, accountAddress, tokenX.adress, LBTokenAmount, totalBalanceX, totalBalanceY);
+            var result = await RemoveLiquidity(web3, contract, etherscanApiService, currentActiveId, accountAddress, tokenX.adress, LBTokenAmount, totalBalanceX, totalBalanceY);
             if (!result)
             {
                 Console.WriteLine("Error RemoveLiquidity");
@@ -226,7 +226,7 @@ namespace LiquidityProvider
 
             var activeId = await contract.GetFunction("getActiveId").CallAsync<BigInteger>();
 
-            result = await AddLiquidity(web3, contract, apiKey, chain, accountAddress, tokenX.adress, tokenY.adress, totalBalanceX, totalBalanceY, activeId);
+            result = await AddLiquidity(web3, contract, etherscanApiService, accountAddress, tokenX.adress, tokenY.adress, totalBalanceX, totalBalanceY, activeId);
             if (!result)
             {
                 Console.WriteLine("Error AddLiquidity");
@@ -243,11 +243,10 @@ namespace LiquidityProvider
             return (true, activeId, information);
         }
 
-        private static async Task<Nethereum.Contracts.Function<T>> GetLBProviderFunction<T>(Web3 web3, string apiKey, EtherscanChain chain)
+        private static async Task<Nethereum.Contracts.Function<T>> GetLBProviderFunction<T>(Web3 web3, EtherscanApiService etherscanApiService)
         {
             var address = "0x18556DA13313f3532c54711497A8FedAC273220E";
-            var etherscanService = new EtherscanApiService(chain, apiKey);
-            var abiContract = await etherscanService.Contracts.GetAbiAsync(address);
+            var abiContract = await etherscanApiService.Contracts.GetAbiAsync(address);
             var contract = web3.Eth.GetContract(abiContract.Result, address);
             return contract.GetFunction<T>();
         }

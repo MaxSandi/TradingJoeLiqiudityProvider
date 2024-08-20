@@ -11,7 +11,7 @@ namespace LiquidityProvider.LiquidityPairs
 {
     internal interface ILiquidityPair
     {
-        Task Initialize(Web3 web3, Account account);
+        Task Initialize(Web3 web3, Account account, Configuration configuration);
 
         Task<bool> CheckChanged();
         Task<(bool success, string information)> CorrectDiapason();

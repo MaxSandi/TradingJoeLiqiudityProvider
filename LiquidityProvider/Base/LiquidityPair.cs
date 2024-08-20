@@ -18,10 +18,11 @@ namespace LiquidityProvider.LiquidityPairs
     [Serializable]
     internal class LiquidityPair : ILiquidityPair
     {
-        private const string ApiKey = "Q9RTI9WFQ13PWG9GGE6GXBYU89DXJSPPZ8";
         private readonly (int token, BigInteger value) _initializeBalance;
         private Web3? _web3;
         private Account? _account;
+        private Configuration? _configuration;
+        private EtherscanApiService? _etherscanService;
         private Contract? _contract;
         private (string address, string symbol) _tokenX;
         private (string address, string symbol) _tokenY;
@@ -46,13 +47,14 @@ namespace LiquidityProvider.LiquidityPairs
             _tokenY = (string.Empty, string.Empty);
         }
 
-        public virtual async Task Initialize(Web3 web3, Account account)
+        public virtual async Task Initialize(Web3 web3, Account account, Configuration configuration)
         {
             _web3 = web3;
             _account = account;
+            _configuration = configuration;
+            _etherscanService = new EtherscanApiService(Chain, _configuration.EtherscanAPIKey);
 
-            var etherscanService = new EtherscanApiService(Chain, ApiKey);
-            var abiContract = await etherscanService.Contracts.GetAbiAsync(ContractProxyAdress);
+            var abiContract = await _etherscanService.Contracts.GetAbiAsync(ContractProxyAdress);
             _contract = _web3.Eth.GetContract(abiContract.Result, ContractAdress);
 
             var tokenAddressX = await _contract.GetFunction("getTokenX").CallAsync<string>();
@@ -78,7 +80,7 @@ namespace LiquidityProvider.LiquidityPairs
 
         public async Task<(bool success, string information)> CorrectDiapason()
         {
-            if (_contract is null || _web3 is null || _account is null)
+            if (_contract is null || _web3 is null || _account is null || _configuration is null || _etherscanService is null)
                 return (false, "Not initialize!");
 
             if (OnlyMonitoring)
@@ -97,7 +99,7 @@ namespace LiquidityProvider.LiquidityPairs
             }
             else
             {
-                var result = await LiquidityService.CorrectDiapason(_web3, _contract, ApiKey, Chain, CurrentActiveId, _account.Address, _tokenX, _tokenY);
+                var result = await LiquidityService.CorrectDiapason(_web3, _contract, _configuration, _etherscanService, CurrentActiveId, _account.Address, _tokenX, _tokenY);
                 if (result.success)
                     CurrentActiveId = result.activeId;
 
@@ -130,7 +132,7 @@ namespace LiquidityProvider.LiquidityPairs
 
         private async Task InitializeLiquidity()
         {
-            if (_contract is null || _account is null || _web3 is null)
+            if (_contract is null || _account is null || _web3 is null || _etherscanService is null)
                 return;
 
             var activeId = await _contract.GetFunction("getActiveId").CallAsync<BigInteger>();
@@ -144,7 +146,7 @@ namespace LiquidityProvider.LiquidityPairs
 
             var amountX = _initializeBalance.token == 0 ? _initializeBalance.value : 0;
             var amountY = _initializeBalance.token != 0 ? _initializeBalance.value : 0;
-            var result = await LiquidityService.AddLiquidity(_web3, _contract, ApiKey, Chain, _account.Address, _tokenX.address, _tokenY.address, amountX, amountY, activeId);
+            var result = await LiquidityService.AddLiquidity(_web3, _contract, _etherscanService, _account.Address, _tokenX.address, _tokenY.address, amountX, amountY, activeId);
             if(result)
             {
                 CurrentActiveId = activeId;

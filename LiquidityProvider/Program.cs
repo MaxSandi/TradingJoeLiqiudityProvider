@@ -63,7 +63,7 @@ internal class Program
         var web3 = new Web3(account, "https://arbitrum-mainnet.infura.io/v3/7be99096d466482789b45c682edf456d");
 
         foreach (var item in liquidityPairs)
-            await item.Initialize(web3, account);
+            await item.Initialize(web3, account, configuration);
 
         Console.WriteLine($"Inititialized {liquidityPairs.Count} pairs!");
         Serialize(liquidityPairs, pairsFilePath);
