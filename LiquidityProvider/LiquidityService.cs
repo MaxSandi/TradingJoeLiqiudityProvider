@@ -89,6 +89,13 @@ namespace LiquidityProvider
     }
 
     [Function("addLiquidityNATIVE", typeof(AddLiquidityOutput))]
+    public class AddLiquidityNATIVEFunction : FunctionMessage
+    {
+        [Parameter("tuple", "liquidityParameters")]
+        public LiquidityParameters liquidityParameters { get; set; }
+    }
+
+    [Function("addLiquidity", typeof(AddLiquidityOutput))]
     public class AddLiquidityFunction : FunctionMessage
     {
         [Parameter("tuple", "liquidityParameters")]
@@ -106,8 +113,8 @@ namespace LiquidityProvider
         public BigInteger Y { get; set; }
     }
 
-    [Function("removeLiquidityNATIVE", typeof(AddLiquidityOutput))]
-    public class RemoveLiquidityFunction : FunctionMessage
+    [Function("removeLiquidityNATIVE")]
+    public class RemoveLiquidityNATIVEFunction : FunctionMessage
     {
         [Parameter("address", "tokenX ", 1)]
         public string token { get; set; }
@@ -133,74 +140,155 @@ namespace LiquidityProvider
         [Parameter("uint256", "deadline", 8)]
         public BigInteger deadline { get; set; }
     }
+
+    [Function("removeLiquidity")]
+    public class RemoveLiquidityFunction : FunctionMessage
+    {
+        [Parameter("address", "tokenX", 1)]
+        public string tokenX { get; set; }
+
+        [Parameter("address", "tokenY", 2)]
+        public string tokenY { get; set; }
+
+        [Parameter("uint16", "binStep", 3)]
+        public ushort binStep { get; set; }
+
+        [Parameter("uint256", "amountXMin", 4)]
+        public BigInteger amountXMin { get; set; }
+
+        [Parameter("uint256", "amountYMin", 5)]
+        public BigInteger amountYMin { get; set; }
+
+        [Parameter("uint256[]", "ids", 6)]
+        public List<BigInteger> ids { get; set; }
+
+        [Parameter("uint256[]", "amounts", 7)]
+        public List<BigInteger> amounts { get; set; }
+
+        [Parameter("address", "to", 8)]
+        public string to { get; set; }
+
+        [Parameter("uint256", "deadline", 9)]
+        public BigInteger deadline { get; set; }
+    }
     #endregion
 
     internal static class LiquidityService
     {
-        public static async Task<bool> AddLiquidity(Web3 web3, Contract contract, EtherscanApiService etherscanApiService, string accountAddress, string tokenX, string tokenY, BigInteger amountX, BigInteger amountY, BigInteger activeId)
+        public static async Task<bool> AddLiquidity(Web3 web3, Contract contract, AbiContractService abiContractService, string accountAddress, string tokenX, string tokenY, BigInteger amountX, BigInteger amountY, BigInteger activeId, bool isNative)
         {
             var binStep = await contract.GetFunction("getBinStep").CallAsync<ushort>();
-
             var deadline = new DateTimeOffset(DateTime.Now.AddDays(1)).ToUnixTimeSeconds();
-            var liquidityParameters = new LiquidityParameters()
-            {
-                tokenX = tokenX,
-                tokenY = tokenY,
-                binStep = binStep,
-                amountX = amountX,
-                amountY = amountY,
-                amountXMin = amountX == 0 ? 0 : amountX - (amountX / 100),
-                amountYMin = amountY == 0 ? 0 : amountY - (amountY / 100),
-                activeIdDesired = activeId,
-                idSlippage = 0,
-                deltaIds = new List<BigInteger>() { 0 },
-                distributionX = new List<BigInteger>() { 1000000000000000000 },
-                distributionY = new List<BigInteger>() { 1000000000000000000 },
-                to = accountAddress,
-                refundTo = accountAddress,
-                deadline = deadline
-            };
-
             var gasPrice = await web3.Eth.GasPrice.SendRequestAsync();
-            var function = new AddLiquidityFunction()
-            {
-                liquidityParameters = liquidityParameters,
-                FromAddress = accountAddress,
-            };
-
-            var addLiquidityFunction = await GetLBProviderFunction<AddLiquidityFunction>(web3, etherscanApiService);
-
             var cancellationToken = new CancellationTokenSource().Token;
-            var result = await addLiquidityFunction.SendTransactionAndWaitForReceiptAsync(function, accountAddress, gasPrice, amountY == 0 ? new HexBigInteger(0) : new HexBigInteger(amountY), cancellationToken);
+            TransactionReceipt result;
+            if (isNative)
+            {
+                var liquidityParameters = new LiquidityParameters()
+                {
+                    tokenX = tokenX,
+                    tokenY = tokenY,
+                    binStep = binStep,
+                    amountX = amountX,
+                    amountY = amountY,
+                    amountXMin = amountX == 0 ? 0 : amountX - (amountX / 100),
+                    amountYMin = amountY == 0 ? 0 : amountY - (amountY / 100),
+                    activeIdDesired = activeId,
+                    idSlippage = 0,
+                    deltaIds = new List<BigInteger>() { 0 },
+                    distributionX = new List<BigInteger>() { 1000000000000000000 },
+                    distributionY = new List<BigInteger>() { 1000000000000000000 },
+                    to = accountAddress,
+                    refundTo = accountAddress,
+                    deadline = deadline
+                };
+                var function = new AddLiquidityNATIVEFunction()
+                {
+                    liquidityParameters = liquidityParameters,
+                    FromAddress = accountAddress,
+                };
+                var addLiquidityFunction = await GetLBProviderFunction<AddLiquidityNATIVEFunction>(web3, abiContractService);
+                result = await addLiquidityFunction.SendTransactionAndWaitForReceiptAsync(function, accountAddress, gasPrice, CalculateTransactionValue(tokenY, amountY), cancellationToken);
+            }
+            else
+            {
+                var liquidityParameters = new LiquidityParameters()
+                {
+                    tokenX = tokenX,
+                    tokenY = tokenY,
+                    binStep = binStep,
+                    amountX = amountX,
+                    amountY = amountY,
+                    amountXMin = amountX == 0 ? 0 : amountX - (amountX / 100),
+                    amountYMin = amountY == 0 ? 0 : amountY - (amountY / 100),
+                    activeIdDesired = activeId,
+                    idSlippage = 9,
+                    deltaIds = new List<BigInteger>() { -1 },
+                    distributionX = new List<BigInteger>() { amountX == 0 ? 0 : 1000000000000000000 },
+                    distributionY = new List<BigInteger>() { amountY == 0 ? 0 : 1000000000000000000 },
+                    to = accountAddress,
+                    refundTo = accountAddress,
+                    deadline = deadline
+                };
+                var function = new AddLiquidityFunction()
+                {
+                    liquidityParameters = liquidityParameters,
+                    FromAddress = accountAddress,
+                };
+                var addLiquidityFunction = await GetLBProviderFunction<AddLiquidityFunction>(web3, abiContractService);
+                result = await addLiquidityFunction.SendTransactionAndWaitForReceiptAsync(function, accountAddress, gasPrice, CalculateTransactionValue(tokenY, amountY), cancellationToken);
+            }
+
             return result.Succeeded();
         }
 
-        public static async Task<bool> RemoveLiquidity(Web3 web3, Contract contract, EtherscanApiService etherscanApiService, BigInteger currentActiveId, string accountAddress, string tokenX, BigInteger LBTokenAmount, BigInteger totalBalanceX, BigInteger totalBalanceY)
+        public static async Task<bool> RemoveLiquidity(Web3 web3, Contract contract, AbiContractService abiContractService, BigInteger currentActiveId, string accountAddress, string tokenX, string tokenY, BigInteger LBTokenAmount, BigInteger totalBalanceX, BigInteger totalBalanceY, bool isNative)
         {
             var binStep = await contract.GetFunction("getBinStep").CallAsync<ushort>();
-
             var deadline = new DateTimeOffset(DateTime.Now.AddDays(1)).ToUnixTimeSeconds();
-            var function = new RemoveLiquidityFunction()
-            {
-                token = tokenX,
-                binStep = binStep,
-                amountTokenMin = totalBalanceX == 0 ? 0 : totalBalanceX - (totalBalanceX / 100),
-                amountNATIVEMin = totalBalanceY == 0 ? 0 : totalBalanceY - (totalBalanceY / 100),
-                ids = new List<BigInteger>() { currentActiveId },
-                amounts = new List<BigInteger>() { LBTokenAmount },
-                to = accountAddress,
-                deadline = deadline
-            };
-
-            var removeLiquidityFunction = await GetLBProviderFunction<RemoveLiquidityFunction>(web3, etherscanApiService);
+            var gasPrice = await web3.Eth.GasPrice.SendRequestAsync();
 
             var cancellationToken = new CancellationTokenSource().Token;
-            var gasPrice = await web3.Eth.GasPrice.SendRequestAsync();
-            var result = await removeLiquidityFunction.SendTransactionAndWaitForReceiptAsync(function, accountAddress, gasPrice, new HexBigInteger(0), cancellationToken);
+            TransactionReceipt result;
+            if (isNative)
+            {
+                var function = new RemoveLiquidityNATIVEFunction()
+                {
+                    token = tokenX,
+                    binStep = binStep,
+                    amountTokenMin = totalBalanceX == 0 ? 0 : totalBalanceX - (totalBalanceX / 100),
+                    amountNATIVEMin = totalBalanceY == 0 ? 0 : totalBalanceY - (totalBalanceY / 100),
+                    ids = new List<BigInteger>() { currentActiveId },
+                    amounts = new List<BigInteger>() { LBTokenAmount },
+                    to = accountAddress,
+                    deadline = deadline
+                };
+
+                var removeLiquidityFunction = await GetLBProviderFunction<RemoveLiquidityNATIVEFunction>(web3, abiContractService);
+                result = await removeLiquidityFunction.SendTransactionAndWaitForReceiptAsync(function, accountAddress, gasPrice, new HexBigInteger(0), cancellationToken);
+            }
+            else
+            {
+                var function = new RemoveLiquidityFunction()
+                {
+                    tokenX = tokenX,
+                    tokenY = tokenY,
+                    binStep = binStep,
+                    amountXMin = totalBalanceX == 0 ? 0 : totalBalanceX - (totalBalanceX / 100),
+                    amountYMin = totalBalanceY == 0 ? 0 : totalBalanceY - (totalBalanceY / 100),
+                    ids = new List<BigInteger>() { currentActiveId },
+                    amounts = new List<BigInteger>() { LBTokenAmount },
+                    to = accountAddress,
+                    deadline = deadline
+                };
+                var removeLiquidityFunction = await GetLBProviderFunction<RemoveLiquidityFunction>(web3, abiContractService);
+                result = await removeLiquidityFunction.SendTransactionAndWaitForReceiptAsync(function, accountAddress, gasPrice, new HexBigInteger(0), cancellationToken);
+            }
+
             return result.Succeeded();
         }
 
-        public static async Task<(bool success, BigInteger activeId, string information)> CorrectDiapason(Web3 web3, Contract contract, Configuration configuration, EtherscanApiService etherscanApiService, BigInteger currentActiveId, string accountAddress, (string adress, string symbol) tokenX, (string adress, string symbol) tokenY)
+        public static async Task<(bool success, BigInteger activeId, string information)> CorrectDiapason(Web3 web3, Contract contract, Configuration configuration, AbiContractService abiContractService, BigInteger currentActiveId, string accountAddress, (string adress, string symbol) tokenX, (string adress, string symbol) tokenY, bool isNative)
         {
             // get mint id from current active id
             var LBTokenAmount = await contract.GetFunction("balanceOf").CallAsync<BigInteger>(new object[] { accountAddress, currentActiveId });
@@ -219,7 +307,7 @@ namespace LiquidityProvider
 
             await Task.Delay(1000);
 
-            var result = await RemoveLiquidity(web3, contract, etherscanApiService, currentActiveId, accountAddress, tokenX.adress, LBTokenAmount, totalBalanceX, totalBalanceY);
+            var result = await RemoveLiquidity(web3, contract, abiContractService, currentActiveId, accountAddress, tokenX.adress, tokenY.adress, LBTokenAmount, totalBalanceX, totalBalanceY, isNative);
             if (!result)
             {
                 Console.WriteLine("Error RemoveLiquidity");
@@ -230,7 +318,7 @@ namespace LiquidityProvider
 
             var activeId = await contract.GetFunction("getActiveId").CallAsync<BigInteger>();
 
-            result = await AddLiquidity(web3, contract, etherscanApiService, accountAddress, tokenX.adress, tokenY.adress, totalBalanceX, totalBalanceY, activeId);
+            result = await AddLiquidity(web3, contract, abiContractService, accountAddress, tokenX.adress, tokenY.adress, totalBalanceX, totalBalanceY, activeId, isNative);
             if (!result)
             {
                 Console.WriteLine("Error AddLiquidity");
@@ -247,16 +335,24 @@ namespace LiquidityProvider
             return (true, activeId, information);
         }
 
-        private static async Task<Nethereum.Contracts.Function<T>> GetLBProviderFunction<T>(Web3 web3, EtherscanApiService etherscanApiService)
+        private static async Task<Nethereum.Contracts.Function<T>> GetLBProviderFunction<T>(Web3 web3, AbiContractService abiContractService)
         {
             var address = "0x18556DA13313f3532c54711497A8FedAC273220E";
-            var abiContract = await etherscanApiService.Contracts.GetAbiAsync(address);
-            var contract = web3.Eth.GetContract(abiContract.Result, address);
+            var abiContract = await abiContractService.GetAbiAsync(address);
+            var contract = web3.Eth.GetContract(abiContract, address);
             return contract.GetFunction<T>();
         }
 
+        private static HexBigInteger CalculateTransactionValue(string token, BigInteger amount)
+        {
+            if (token != "0x82aF49447D8a07e3bd95BD0d56f35241523fBab1") // WETH
+                return new HexBigInteger(0);
+
+            return amount == 0 ? new HexBigInteger(0) : new HexBigInteger(amount);
+        }
+
         #region Decode
-        private static async Task Decode(Web3 web3, string hash)
+        public static async Task Decode(Web3 web3, string hash)
         {
             var txn = await web3.Eth.Transactions.GetTransactionByHash.SendRequestAsync(hash);
             //check if the transfer belongs to the Transfer Function if not ignore it

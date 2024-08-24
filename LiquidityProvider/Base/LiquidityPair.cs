@@ -22,7 +22,7 @@ namespace LiquidityProvider.LiquidityPairs
         private Web3? _web3;
         private Account? _account;
         private Configuration? _configuration;
-        private EtherscanApiService? _etherscanService;
+        private AbiContractService? _abiContractService;
         private Contract? _contract;
         private (string address, string symbol) _tokenX;
         private (string address, string symbol) _tokenY;
@@ -34,6 +34,7 @@ namespace LiquidityProvider.LiquidityPairs
         public string ContractProxyAdress { get; set; }
         public BigInteger CurrentActiveId { get; set; }
         public bool OnlyMonitoring { get; set; } = false;
+        public bool IsNative { get; set; } = true;
 
         public LiquidityPair(string contractAdress, EtherscanChain chain, (int token, BigInteger value) initializeBalance, string contractProxyAdress = "")
         {
@@ -47,15 +48,18 @@ namespace LiquidityProvider.LiquidityPairs
             _tokenY = (string.Empty, string.Empty);
         }
 
-        public virtual async Task Initialize(Web3 web3, Account account, Configuration configuration)
+        public virtual async Task Initialize(Web3 web3, Account account, Configuration configuration, AbiContractService abiContractService)
         {
             _web3 = web3;
             _account = account;
             _configuration = configuration;
-            _etherscanService = new EtherscanApiService(Chain, _configuration.EtherscanAPIKey);
+            _abiContractService = abiContractService;
 
-            var abiContract = await _etherscanService.Contracts.GetAbiAsync(ContractProxyAdress);
-            _contract = _web3.Eth.GetContract(abiContract.Result, ContractAdress);
+            var abiContract = await _abiContractService.GetAbiAsync(ContractProxyAdress);
+            if (string.IsNullOrEmpty(abiContract))
+                throw new Exception("ERROR _abiContractService.GetAbi!");
+
+            _contract = _web3.Eth.GetContract(abiContract, ContractAdress);
 
             var tokenAddressX = await _contract.GetFunction("getTokenX").CallAsync<string>();
             var tokenAddressY = await _contract.GetFunction("getTokenY").CallAsync<string>();
@@ -80,7 +84,7 @@ namespace LiquidityProvider.LiquidityPairs
 
         public async Task<(bool success, string information)> CorrectDiapason()
         {
-            if (_contract is null || _web3 is null || _account is null || _configuration is null || _etherscanService is null)
+            if (_contract is null || _web3 is null || _account is null || _configuration is null || _abiContractService is null)
                 return (false, "Not initialize!");
 
             if (OnlyMonitoring)
@@ -99,7 +103,7 @@ namespace LiquidityProvider.LiquidityPairs
             }
             else
             {
-                var result = await LiquidityService.CorrectDiapason(_web3, _contract, _configuration, _etherscanService, CurrentActiveId, _account.Address, _tokenX, _tokenY);
+                var result = await LiquidityService.CorrectDiapason(_web3, _contract, _configuration, _abiContractService, CurrentActiveId, _account.Address, _tokenX, _tokenY, IsNative);
                 if (result.success)
                     CurrentActiveId = result.activeId;
 
@@ -132,7 +136,7 @@ namespace LiquidityProvider.LiquidityPairs
 
         private async Task InitializeLiquidity()
         {
-            if (_contract is null || _account is null || _web3 is null || _etherscanService is null)
+            if (_contract is null || _account is null || _web3 is null || _abiContractService is null)
                 return;
 
             var activeId = await _contract.GetFunction("getActiveId").CallAsync<BigInteger>();
@@ -146,7 +150,7 @@ namespace LiquidityProvider.LiquidityPairs
 
             var amountX = _initializeBalance.token == 0 ? _initializeBalance.value : 0;
             var amountY = _initializeBalance.token != 0 ? _initializeBalance.value : 0;
-            var result = await LiquidityService.AddLiquidity(_web3, _contract, _etherscanService, _account.Address, _tokenX.address, _tokenY.address, amountX, amountY, activeId);
+            var result = await LiquidityService.AddLiquidity(_web3, _contract, _abiContractService, _account.Address, _tokenX.address, _tokenY.address, amountX, amountY, activeId, IsNative);
             if(result)
             {
                 CurrentActiveId = activeId;

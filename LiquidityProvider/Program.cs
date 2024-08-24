@@ -8,6 +8,8 @@ using Telegram.Bot.Types.Enums;
 using LiquidityProvider.LiquidityPairs;
 using Newtonsoft.Json;
 using LiquidityProvider;
+using Nethereum.Signer;
+using Nethereum.DataServices.Etherscan;
 
 internal class Program
 {
@@ -61,15 +63,17 @@ internal class Program
 
         var account = new Account(configuration.AccountKey);
         var web3 = new Web3(account, configuration.RpcEndpoint);
+        var abiContractService = new AbiContractService(EtherscanChain.Arbitrum, configuration.EtherscanAPIKey, configuration.AbiContracts);
 
         foreach (var item in liquidityPairs)
-            await item.Initialize(web3, account, configuration);
+            await item.Initialize(web3, account, configuration, abiContractService);
 
         Console.WriteLine($"Inititialized {liquidityPairs.Count} pairs!");
         Serialize(liquidityPairs, pairsFilePath);
 
         var monitoringTask = MonitoringLiquidityAsync(liquidityPairs);
 
+        configuration.AbiContracts = abiContractService.AbiContracts;
         Serialize(configuration, configurationFilePath);
 
         Console.WriteLine($"Press any button to exit!");
@@ -160,7 +164,9 @@ internal class Program
                 }
                 catch (Exception e)
                 {
-                    Console.WriteLine($"{e.Message} # {DateTime.Now}");
+                    var errorMessage = $"{e.Message} # {DateTime.Now}";
+                    Console.WriteLine(errorMessage);
+                    await NotifyTelegramAsync(errorMessage);
                 }
 
 
