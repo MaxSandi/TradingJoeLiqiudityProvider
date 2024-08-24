@@ -175,33 +175,38 @@ namespace LiquidityProvider
 
     internal static class LiquidityService
     {
+        private const float MinPercentage = 0.1f;
+
         public static async Task<bool> AddLiquidity(Web3 web3, Contract contract, AbiContractService abiContractService, string accountAddress, string tokenX, string tokenY, BigInteger amountX, BigInteger amountY, BigInteger activeId, bool isNative)
         {
             var binStep = await contract.GetFunction("getBinStep").CallAsync<ushort>();
             var deadline = new DateTimeOffset(DateTime.Now.AddDays(1)).ToUnixTimeSeconds();
             var gasPrice = await web3.Eth.GasPrice.SendRequestAsync();
             var cancellationToken = new CancellationTokenSource().Token;
+
+            var amountDelta = (int)(1 / MinPercentage * 100);
+
+            var liquidityParameters = new LiquidityParameters()
+            {
+                tokenX = tokenX,
+                tokenY = tokenY,
+                binStep = binStep,
+                amountX = amountX,
+                amountY = amountY,
+                amountXMin = amountX == 0 ? 0 : amountX - (amountX / amountDelta),
+                amountYMin = amountY == 0 ? 0 : amountY - (amountY / amountDelta),
+                activeIdDesired = activeId,
+                idSlippage = 0,
+                deltaIds = new List<BigInteger>() { 0 },
+                distributionX = new List<BigInteger>() { 1000000000000000000 },
+                distributionY = new List<BigInteger>() { 1000000000000000000 },
+                to = accountAddress,
+                refundTo = accountAddress,
+                deadline = deadline
+            };
             TransactionReceipt result;
             if (isNative)
             {
-                var liquidityParameters = new LiquidityParameters()
-                {
-                    tokenX = tokenX,
-                    tokenY = tokenY,
-                    binStep = binStep,
-                    amountX = amountX,
-                    amountY = amountY,
-                    amountXMin = amountX == 0 ? 0 : amountX - (amountX / 100),
-                    amountYMin = amountY == 0 ? 0 : amountY - (amountY / 100),
-                    activeIdDesired = activeId,
-                    idSlippage = 0,
-                    deltaIds = new List<BigInteger>() { 0 },
-                    distributionX = new List<BigInteger>() { 1000000000000000000 },
-                    distributionY = new List<BigInteger>() { 1000000000000000000 },
-                    to = accountAddress,
-                    refundTo = accountAddress,
-                    deadline = deadline
-                };
                 var function = new AddLiquidityNATIVEFunction()
                 {
                     liquidityParameters = liquidityParameters,
@@ -212,24 +217,6 @@ namespace LiquidityProvider
             }
             else
             {
-                var liquidityParameters = new LiquidityParameters()
-                {
-                    tokenX = tokenX,
-                    tokenY = tokenY,
-                    binStep = binStep,
-                    amountX = amountX,
-                    amountY = amountY,
-                    amountXMin = amountX == 0 ? 0 : amountX - (amountX / 100),
-                    amountYMin = amountY == 0 ? 0 : amountY - (amountY / 100),
-                    activeIdDesired = activeId,
-                    idSlippage = 9,
-                    deltaIds = new List<BigInteger>() { -1 },
-                    distributionX = new List<BigInteger>() { amountX == 0 ? 0 : 1000000000000000000 },
-                    distributionY = new List<BigInteger>() { amountY == 0 ? 0 : 1000000000000000000 },
-                    to = accountAddress,
-                    refundTo = accountAddress,
-                    deadline = deadline
-                };
                 var function = new AddLiquidityFunction()
                 {
                     liquidityParameters = liquidityParameters,
@@ -248,6 +235,8 @@ namespace LiquidityProvider
             var deadline = new DateTimeOffset(DateTime.Now.AddDays(1)).ToUnixTimeSeconds();
             var gasPrice = await web3.Eth.GasPrice.SendRequestAsync();
 
+            var amountDelta = (int)(1 / MinPercentage * 100);
+
             var cancellationToken = new CancellationTokenSource().Token;
             TransactionReceipt result;
             if (isNative)
@@ -256,8 +245,8 @@ namespace LiquidityProvider
                 {
                     token = tokenX,
                     binStep = binStep,
-                    amountTokenMin = totalBalanceX == 0 ? 0 : totalBalanceX - (totalBalanceX / 100),
-                    amountNATIVEMin = totalBalanceY == 0 ? 0 : totalBalanceY - (totalBalanceY / 100),
+                    amountTokenMin = totalBalanceX == 0 ? 0 : totalBalanceX - (totalBalanceX / amountDelta),
+                    amountNATIVEMin = totalBalanceY == 0 ? 0 : totalBalanceY - (totalBalanceY / amountDelta),
                     ids = new List<BigInteger>() { currentActiveId },
                     amounts = new List<BigInteger>() { LBTokenAmount },
                     to = accountAddress,
@@ -274,8 +263,8 @@ namespace LiquidityProvider
                     tokenX = tokenX,
                     tokenY = tokenY,
                     binStep = binStep,
-                    amountXMin = totalBalanceX == 0 ? 0 : totalBalanceX - (totalBalanceX / 100),
-                    amountYMin = totalBalanceY == 0 ? 0 : totalBalanceY - (totalBalanceY / 100),
+                    amountXMin = totalBalanceX == 0 ? 0 : totalBalanceX - (totalBalanceX / amountDelta),
+                    amountYMin = totalBalanceY == 0 ? 0 : totalBalanceY - (totalBalanceY / amountDelta),
                     ids = new List<BigInteger>() { currentActiveId },
                     amounts = new List<BigInteger>() { LBTokenAmount },
                     to = accountAddress,
