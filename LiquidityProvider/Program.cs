@@ -26,8 +26,14 @@ internal class Program
             return;
         }
 
+        Console.WriteLine("Insert wallet private key:");
+        configuration.AccountKey = Console.ReadLine();
+
+        ClearCurrentConsoleLine();
+        Console.WriteLine("Wallet private key was initialized!");
+
         var result = CheckConfiguration(configuration);
-        if(!result.Item1)
+        if (!result.Item1)
         {
             Console.WriteLine(result.Item2);
             Console.ReadLine();
@@ -203,6 +209,14 @@ internal class Program
             return default(T);
         }
         #endregion
+
+        void ClearCurrentConsoleLine()
+        {
+            int currentLineCursor = Console.CursorTop - 1; // Строка выше текущей (т.к. ReadLine добавляет новую строку)
+            Console.SetCursorPosition(0, currentLineCursor); // Установка курсора в начало строки
+            Console.Write(new string(' ', Console.WindowWidth)); // Перезаписываем строку пробелами
+            Console.SetCursorPosition(0, currentLineCursor); // Возвращаем курсор в начало строки
+        }
     }
 }
 
